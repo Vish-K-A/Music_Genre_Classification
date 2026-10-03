@@ -3,8 +3,14 @@ data/
 fma_small/
 fma_metadata/
 
-# Trained models
+# Local demo and test audio
+demo_audio/
+*.wav
+*.mp3
+FMA_small_8_real_test_cases.zip
 
+# Trained models
+models/*.pt
 
 # Python cache
 __pycache__/
@@ -16,6 +22,8 @@ __pycache__/
 # Virtual environments
 venv/
 .venv/
+
+# Kaggle / credentials
 .kaggle-run/
 kaggle.json
 access_token

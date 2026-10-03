@@ -1,0 +1,65 @@
+FMA-small real held-out test cases
+
+filename: 01_Electronic_013706.mp3
+FMA track ID: 13706
+title: Love Crime (Qwertypak Venom Remix)
+artist: Goto80
+genre: Electronic
+split: test
+source: FMA-small
+
+filename: 02_Experimental_001066.mp3
+FMA track ID: 1066
+title: Helicopter de Cristal
+artist: Lucky Dragons
+genre: Experimental
+split: test
+source: FMA-small
+
+filename: 03_Folk_000890.mp3
+FMA track ID: 890
+title: Softly Tomorrow
+artist: Ilyas Ahmed
+genre: Folk
+split: test
+source: FMA-small
+
+filename: 04_Hip-Hop_011204.mp3
+FMA track ID: 11204
+title: Steppin' In
+artist: Audible Intelligence
+genre: Hip-Hop
+split: test
+source: FMA-small
+
+filename: 05_Instrumental_010250.mp3
+FMA track ID: 10250
+title: Tree Symphony
+artist: JayDee
+genre: Instrumental
+split: test
+source: FMA-small
+
+filename: 06_International_000704.mp3
+FMA track ID: 704
+title: Mano De Dios
+artist: Fósforo
+genre: International
+split: test
+source: FMA-small
+
+filename: 07_Pop_011200.mp3
+FMA track ID: 11200
+title: Berlin Lights (Finistere)
+artist: March Rosetta
+genre: Pop
+split: test
+source: FMA-small
+
+filename: 08_Rock_000182.mp3
+FMA track ID: 182
+title: Jules Lost His Jewels
+artist: Ariel Pink's Haunted Graffiti
+genre: Rock
+split: test
+source: FMA-small
