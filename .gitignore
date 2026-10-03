@@ -1,8 +1,13 @@
-<<<<<<< HEAD
 # Dataset
 data/
 fma_small/
 fma_metadata/
+
+# Local demo and test audio
+demo_audio/
+*.wav
+*.mp3
+FMA_small_8_real_test_cases.zip
 
 # Trained models
 models/*.pt
@@ -26,30 +31,3 @@ access_token
 # OS/editor junk
 .DS_Store
 Thumbs.db
-=======
-# Dataset
-data/
-fma_small/
-fma_metadata/
-
-# Trained models
-
-
-# Python cache
-__pycache__/
-*.pyc
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Virtual environments
-venv/
-.venv/
-.kaggle-run/
-kaggle.json
-access_token
-
-# OS/editor junk
-.DS_Store
-Thumbs.db
->>>>>>> main

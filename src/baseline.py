@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,13 @@ EXPECTED_TRACK_COUNT = 8000
 EXPECTED_FEATURE_COUNT = 140
 FEATURE_NAME = "mfcc"
 GENRE_ORDER = EXPECTED_GENRES
+MFCC_STATISTIC_ORDER = ("kurtosis", "max", "mean", "median", "min", "skew", "std")
+BASELINE_MODEL_NAMES = (
+    "K-Nearest Neighbors",
+    "Logistic Regression",
+    "Linear Support Vector Machine",
+    "Multi-Layer Perceptron",
+)
 
 __all__ = [
     "GENRE_ORDER",
@@ -40,6 +48,8 @@ __all__ = [
     "train_baselines",
     "evaluate_baselines",
     "predict_genre",
+    "extract_mfcc_features",
+    "predict_baselines_from_audio",
     "save_baseline_bundle",
     "load_baseline_bundle",
 ]
@@ -322,3 +332,136 @@ def load_baseline_bundle(bundle_path: str | Path = "models/baseline/baseline_bun
     if models is None or scaler is None:
         raise ValueError(f"Bundle at {path} does not contain the expected baseline payload.")
     return models, scaler, payload
+
+
+def extract_mfcc_features(audio_path: str | Path | None) -> np.ndarray:
+    """Extract the 140 MFCC summary features used by the official FMA table."""
+    if audio_path is None:
+        raise ValueError("Please select an audio file.")
+
+    path = Path(audio_path).expanduser()
+    if not path.exists():
+        raise FileNotFoundError(f"Audio file not found at {path}.")
+    if not path.is_file():
+        raise ValueError(f"Audio path is not a file: {path}.")
+
+    try:
+        import librosa
+        from scipy import stats
+    except ImportError as exc:
+        raise RuntimeError("Raw-audio baseline inference requires librosa and scipy.") from exc
+
+    try:
+        audio, sample_rate = librosa.load(str(path), sr=None, mono=True)
+        if audio.size == 0:
+            raise ValueError("Audio file contains no samples.")
+
+        stft = np.abs(librosa.stft(audio, n_fft=2048, hop_length=512))
+        mel = librosa.feature.melspectrogram(sr=sample_rate, S=stft**2)
+        mfcc = librosa.feature.mfcc(
+            S=librosa.power_to_db(mel),
+            n_mfcc=20,
+        )
+    except Exception as exc:
+        raise ValueError(f"Unable to decode or extract MFCC features from {path}.") from exc
+
+    if mfcc.ndim != 2 or mfcc.shape[0] != 20:
+        raise ValueError(f"Expected 20 MFCC coefficient rows, received shape {mfcc.shape}.")
+
+    summaries = {
+        "mean": np.mean(mfcc, axis=1),
+        "std": np.std(mfcc, axis=1),
+        "skew": stats.skew(mfcc, axis=1),
+        "kurtosis": stats.kurtosis(mfcc, axis=1),
+        "median": np.median(mfcc, axis=1),
+        "min": np.min(mfcc, axis=1),
+        "max": np.max(mfcc, axis=1),
+    }
+    feature_vector = np.concatenate(
+        [summaries[name] for name in MFCC_STATISTIC_ORDER]
+    ).astype(np.float32, copy=False)
+
+    if feature_vector.shape != (EXPECTED_FEATURE_COUNT,):
+        raise ValueError(
+            f"Expected {EXPECTED_FEATURE_COUNT} MFCC summary features, "
+            f"received shape {feature_vector.shape}."
+        )
+    if not np.isfinite(feature_vector).all():
+        raise ValueError("Audio produced non-finite MFCC summary features.")
+    return feature_vector
+
+
+@lru_cache(maxsize=1)
+def _load_cached_baseline_bundle() -> tuple[dict[str, Any], StandardScaler, dict[str, Any]]:
+    models, scaler, payload = load_baseline_bundle()
+
+    if tuple(payload.get("genre_order", ())) != tuple(GENRE_ORDER):
+        raise ValueError("Baseline bundle genre order does not match GENRE_ORDER.")
+    if payload.get("feature_name") != FEATURE_NAME:
+        raise ValueError(f"Expected baseline feature family {FEATURE_NAME!r}.")
+    if payload.get("expected_feature_count") != EXPECTED_FEATURE_COUNT:
+        raise ValueError(f"Expected a {EXPECTED_FEATURE_COUNT}-feature baseline bundle.")
+    if getattr(scaler, "n_features_in_", None) != EXPECTED_FEATURE_COUNT:
+        raise ValueError(
+            f"Baseline scaler expects {getattr(scaler, 'n_features_in_', None)} features; "
+            f"expected {EXPECTED_FEATURE_COUNT}."
+        )
+    if set(models) != set(BASELINE_MODEL_NAMES):
+        raise ValueError(f"Unexpected baseline models in bundle: {sorted(models)}.")
+
+    expected_encoded_classes = np.arange(len(GENRE_ORDER))
+    for name, model in models.items():
+        if getattr(model, "n_features_in_", None) != EXPECTED_FEATURE_COUNT:
+            raise ValueError(f"Baseline model {name!r} does not accept 140 features.")
+        label_encoder = getattr(model, "label_encoder_", None)
+        if label_encoder is None or tuple(label_encoder.classes_) != tuple(GENRE_ORDER):
+            raise ValueError(f"Baseline model {name!r} has an incompatible genre encoder.")
+        if not np.array_equal(getattr(model, "classes_", None), expected_encoded_classes):
+            raise ValueError(f"Baseline model {name!r} has incompatible encoded classes.")
+
+    return models, scaler, payload
+
+
+def predict_baselines_from_audio(audio_path: str | Path | None) -> dict[str, Any]:
+    """Predict with all saved baselines; ties follow the fixed GENRE_ORDER."""
+    models, scaler, _ = _load_cached_baseline_bundle()
+    feature_vector = extract_mfcc_features(audio_path)
+    if feature_vector.shape != (EXPECTED_FEATURE_COUNT,):
+        raise ValueError(
+            f"Expected a feature vector of shape ({EXPECTED_FEATURE_COUNT},), "
+            f"received {feature_vector.shape}."
+        )
+
+    scaled = scaler.transform(feature_vector.reshape(1, -1))
+    predictions: dict[str, str] = {}
+    probabilities: dict[str, dict[str, float]] = {}
+    vote_counts = {genre: 0 for genre in GENRE_ORDER}
+
+    for name in BASELINE_MODEL_NAMES:
+        model = models[name]
+        encoded_prediction = np.asarray(model.predict(scaled)).reshape(-1)
+        if encoded_prediction.size != 1:
+            raise ValueError(f"Baseline model {name!r} returned multiple predictions.")
+        genre = str(model.label_encoder_.inverse_transform(encoded_prediction)[0])
+        predictions[name] = genre
+        vote_counts[genre] += 1
+
+        predict_proba = getattr(model, "predict_proba", None)
+        if callable(predict_proba):
+            scores = predict_proba(scaled)[0]
+            score_genres = model.label_encoder_.inverse_transform(model.classes_)
+            probabilities[name] = {
+                str(score_genre): float(score)
+                for score_genre, score in zip(score_genres, scores)
+            }
+
+    highest_vote_count = max(vote_counts.values())
+    consensus = next(
+        genre for genre in GENRE_ORDER if vote_counts[genre] == highest_vote_count
+    )
+    return {
+        "model_predictions": predictions,
+        "consensus_prediction": consensus,
+        "vote_counts": vote_counts,
+        "model_probabilities": probabilities,
+    }
